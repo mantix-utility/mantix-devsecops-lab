@@ -35,6 +35,19 @@ jobs:
       # 3. Verificar la identidad asumida en AWS
       - name: Verify AWS identity
         run: aws sts get-caller-identity
+        
+      - name: Test Inspector SAST findings access
+        run: |
+          aws inspector2 list-findings \
+            --filter-criteria '{
+              "findingStatus":[{"comparison":"EQUALS","value":"ACTIVE"}],
+              "severity":[
+                {"comparison":"EQUALS","value":"HIGH"},
+                {"comparison":"EQUALS","value":"CRITICAL"}
+              ]
+            }' \
+            --region us-east-1
+       
 
       # 4. Generar SBOM y analizar el repositorio con Amazon Inspector
       - name: Amazon Inspector vulnerability scan
