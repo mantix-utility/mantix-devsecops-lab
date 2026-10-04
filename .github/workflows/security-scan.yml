@@ -85,8 +85,8 @@ jobs:
               ]
             }' \
             --region us-east-1 \
-            --query 'length(findings)' \
-            --output text)
+            --query 'findings' \
+            --output json | jq 'length')
 
           echo "Active Critical/High SAST findings: $COUNT"
 
