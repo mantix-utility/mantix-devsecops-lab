@@ -21,50 +21,55 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1. Descargar el código del repositorio
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Inspect GitHub OIDC claims
-        shell: bash
-        run: |
-          RESPONSE=$(curl -sS \
-            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")
-
-          TOKEN=$(echo "$RESPONSE" | jq -r '.value')
-
-          if [ "$TOKEN" = "null" ] || [ -z "$TOKEN" ]; then
-            echo "Could not obtain GitHub OIDC token"
-            exit 1
-          fi
-
-          PAYLOAD=$(echo "$TOKEN" | cut -d '.' -f2)
-
-          # JWT uses base64url and may omit padding.
-          PAYLOAD=$(echo "$PAYLOAD" | tr '_-' '/+')
-          case $((${#PAYLOAD} % 4)) in
-            2) PAYLOAD="${PAYLOAD}==" ;;
-            3) PAYLOAD="${PAYLOAD}=" ;;
-          esac
-
-          echo "=== GitHub OIDC claims relevant to AWS ==="
-          echo "$PAYLOAD" | base64 -d | jq '{
-            sub,
-            aud,
-            repository,
-            repository_id,
-            repository_owner,
-            repository_owner_id,
-            ref,
-            ref_type,
-            event_name
-          }'
-
+      # 2. Autenticarse contra AWS mediante OIDC
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::523835807940:role/GitHubActions-InspectorScan
           aws-region: us-east-1
 
+      # 3. Verificar la identidad asumida en AWS
       - name: Verify AWS identity
         run: aws sts get-caller-identity
+
+      # 4. Generar SBOM y analizar el repositorio con Amazon Inspector
+      - name: Amazon Inspector vulnerability scan
+        id: inspector
+        uses: aws-actions/vulnerability-scan-github-action-for-amazon-inspector@v1
+        with:
+          artifact_type: repository
+          artifact_path: ./
+          display_vulnerability_findings: enabled
+
+          # Por ahora solo medimos.
+          # Todavía NO bloquearemos el pipeline.
+          critical_threshold: 1
+          high_threshold: 1
+          medium_threshold: 1
+          low_threshold: 1
+          other_threshold: 1
+
+      # 5. Mostrar si alguno de los thresholds fue alcanzado
+      - name: Show security gate result
+        run: |
+          echo "======================================"
+          echo " Amazon Inspector Security Gate"
+          echo "======================================"
+          echo "Threshold exceeded:"
+          echo "${{ steps.inspector.outputs.vulnerability_threshold_exceeded }}"
+          echo "======================================"
+
+      # 6. Guardar SBOM y resultados del análisis
+      - name: Upload Inspector scan results
+        uses: actions/upload-artifact@v4
+        with:
+          name: amazon-inspector-results
+          path: |
+            ${{ steps.inspector.outputs.artifact_sbom }}
+            ${{ steps.inspector.outputs.inspector_scan_results }}
+            ${{ steps.inspector.outputs.inspector_scan_results_csv }}
+            ${{ steps.inspector.outputs.inspector_scan_results_markdown }}
