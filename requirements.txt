@@ -13,3 +13,4 @@ aiohttp==3.5.4
 tornado==5.1
 Twisted==18.9.0
 lxml==4.2.5
+certifi==2018.1.18
