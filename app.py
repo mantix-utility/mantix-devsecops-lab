@@ -11,9 +11,11 @@ def get_user():
     connection = sqlite3.connect("users.db")
     cursor = connection.cursor()
 
-    # Intentionally vulnerable for SAST gate test
-    query = "SELECT * FROM users WHERE id = " + user_id
-    cursor.execute(query)
+    # Secure query using parameterized SQL
+    cursor.execute(
+        "SELECT * FROM users WHERE id = ?",
+        (user_id,)
+    )
 
     user = cursor.fetchone()
     connection.close()
