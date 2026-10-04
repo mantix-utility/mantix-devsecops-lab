@@ -16,38 +16,28 @@ permissions:
   contents: read
 
 jobs:
-  security-scan:
-    name: Amazon Inspector Security Scan
+
+  # ==========================================================
+  # SAST - Source Code Security
+  # ==========================================================
+  sast-security:
+    name: SAST Security Gate
     runs-on: ubuntu-latest
 
     steps:
-      # -------------------------------------------------------
-      # 1. Checkout repository
-      # -------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # -------------------------------------------------------
-      # 2. Authenticate to AWS using GitHub OIDC
-      # -------------------------------------------------------
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::523835807940:role/GitHubActions-InspectorScan
           aws-region: us-east-1
 
-      # -------------------------------------------------------
-      # 3. Validate AWS identity
-      # -------------------------------------------------------
       - name: Verify AWS identity
         run: aws sts get-caller-identity
 
-      # -------------------------------------------------------
-      # 4. SAST Security Gate
-      # Blocks when Inspector has ACTIVE Critical/High
-      # CODE_VULNERABILITY findings for this repository
-      # -------------------------------------------------------
-      - name: SAST Security Gate
+      - name: Check Inspector SAST findings
         run: |
           echo "======================================"
           echo " Amazon Inspector SAST Security Gate"
@@ -98,9 +88,27 @@ jobs:
 
           echo "SAST SECURITY GATE PASSED"
 
-      # -------------------------------------------------------
-      # 5. SCA / SBOM Scan
-      # -------------------------------------------------------
+
+  # ==========================================================
+  # SCA - Dependency / SBOM Security
+  # ==========================================================
+  sca-security:
+    name: SCA Security Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::523835807940:role/GitHubActions-InspectorScan
+          aws-region: us-east-1
+
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity
+
       - name: Amazon Inspector SCA Scan
         id: inspector
         uses: aws-actions/vulnerability-scan-github-action-for-amazon-inspector@v1
@@ -109,41 +117,33 @@ jobs:
           artifact_path: ./
           display_vulnerability_findings: enabled
 
-          # Security policy:
-          # Critical >= 1 -> fail
-          # High >= 1     -> fail
-          # Medium/Low    -> report only
+          # Critical and High block the pipeline.
+          # Medium and Low are reported but accepted.
           critical_threshold: 1
           high_threshold: 1
           medium_threshold: 0
           low_threshold: 0
           other_threshold: 0
 
-      # -------------------------------------------------------
-      # 6. SCA Security Gate
-      # -------------------------------------------------------
-      - name: SCA Security Gate
+      - name: Evaluate SCA Security Gate
         run: |
           echo "======================================"
           echo " Amazon Inspector SCA Security Gate"
           echo "======================================"
 
           if [ "${{ steps.inspector.outputs.vulnerability_threshold_exceeded }}" = "1" ]; then
-            echo "SECURITY GATE FAILED"
+            echo "SCA SECURITY GATE FAILED"
             echo "Vulnerability findings exceeded the configured security threshold."
             exit 1
           fi
 
           echo "SCA SECURITY GATE PASSED"
 
-      # -------------------------------------------------------
-      # 7. Upload Inspector reports
-      # -------------------------------------------------------
       - name: Upload Inspector scan reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: amazon-inspector-scan-results
+          name: amazon-inspector-sca-results
           path: |
             inspector_scan_*.json
             inspector_scan_*.csv
