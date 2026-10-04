@@ -16,41 +16,92 @@ permissions:
   contents: read
 
 jobs:
-  inspector-scan:
+  security-scan:
     name: Amazon Inspector Security Scan
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Descargar el código del repositorio
+      # -------------------------------------------------------
+      # 1. Checkout repository
+      # -------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Autenticarse contra AWS mediante OIDC
-      - name: Configure AWS credentials via OIDC
+      # -------------------------------------------------------
+      # 2. Authenticate to AWS using GitHub OIDC
+      # -------------------------------------------------------
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::523835807940:role/GitHubActions-InspectorScan
           aws-region: us-east-1
 
-      # 3. Verificar la identidad asumida en AWS
+      # -------------------------------------------------------
+      # 3. Validate AWS identity
+      # -------------------------------------------------------
       - name: Verify AWS identity
         run: aws sts get-caller-identity
-        
-      - name: Test Inspector SAST findings access
+
+      # -------------------------------------------------------
+      # 4. SAST Security Gate
+      # Blocks when Inspector has ACTIVE Critical/High
+      # CODE_VULNERABILITY findings for this repository
+      # -------------------------------------------------------
+      - name: SAST Security Gate
         run: |
-          aws inspector2 list-findings \
+          echo "======================================"
+          echo " Amazon Inspector SAST Security Gate"
+          echo "======================================"
+
+          COUNT=$(aws inspector2 list-findings \
             --filter-criteria '{
-              "findingStatus":[{"comparison":"EQUALS","value":"ACTIVE"}],
+              "findingStatus":[
+                {
+                  "comparison":"EQUALS",
+                  "value":"ACTIVE"
+                }
+              ],
+              "findingType":[
+                {
+                  "comparison":"EQUALS",
+                  "value":"CODE_VULNERABILITY"
+                }
+              ],
               "severity":[
-                {"comparison":"EQUALS","value":"HIGH"},
-                {"comparison":"EQUALS","value":"CRITICAL"}
+                {
+                  "comparison":"EQUALS",
+                  "value":"HIGH"
+                },
+                {
+                  "comparison":"EQUALS",
+                  "value":"CRITICAL"
+                }
+              ],
+              "codeRepositoryProjectName":[
+                {
+                  "comparison":"EQUALS",
+                  "value":"mantix-utility/mantix-devsecops-lab:main"
+                }
               ]
             }' \
-            --region us-east-1
-       
+            --region us-east-1 \
+            --query 'length(findings)' \
+            --output text)
 
-      # 4. Generar SBOM y analizar el repositorio con Amazon Inspector
-      - name: Amazon Inspector vulnerability scan
+          echo "Active Critical/High SAST findings: $COUNT"
+
+          if [ "$COUNT" -gt 0 ]; then
+            echo "SAST SECURITY GATE FAILED"
+            echo "Critical or High code vulnerabilities are active in Amazon Inspector."
+            exit 1
+          fi
+
+          echo "SAST SECURITY GATE PASSED"
+
+      # -------------------------------------------------------
+      # 5. SCA / SBOM Scan
+      # -------------------------------------------------------
+      - name: Amazon Inspector SCA Scan
         id: inspector
         uses: aws-actions/vulnerability-scan-github-action-for-amazon-inspector@v1
         with:
@@ -58,38 +109,46 @@ jobs:
           artifact_path: ./
           display_vulnerability_findings: enabled
 
-          # Por ahora solo medimos.
-          # Todavía NO bloquearemos el pipeline.
+          # Security policy:
+          # Critical >= 1 -> fail
+          # High >= 1     -> fail
+          # Medium/Low    -> report only
           critical_threshold: 1
           high_threshold: 1
           medium_threshold: 0
           low_threshold: 0
           other_threshold: 0
 
-      # 5. Mostrar si alguno de los thresholds fue alcanzado
-      - name: Enforce security gate
+      # -------------------------------------------------------
+      # 6. SCA Security Gate
+      # -------------------------------------------------------
+      - name: SCA Security Gate
         run: |
           echo "======================================"
-          echo " Amazon Inspector Security Gate"
+          echo " Amazon Inspector SCA Security Gate"
           echo "======================================"
 
           if [ "${{ steps.inspector.outputs.vulnerability_threshold_exceeded }}" = "1" ]; then
             echo "SECURITY GATE FAILED"
-            echo "Critical or High vulnerabilities exceeded the allowed threshold."
+            echo "Vulnerability findings exceeded the configured security threshold."
             exit 1
           fi
 
-          echo "SECURITY GATE PASSED"
+          echo "SCA SECURITY GATE PASSED"
 
-      # 6. Guardar SBOM y resultados del análisis
-      - name: Upload Inspector scan results
+      # -------------------------------------------------------
+      # 7. Upload Inspector reports
+      # -------------------------------------------------------
+      - name: Upload Inspector scan reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: amazon-inspector-results
+          name: amazon-inspector-scan-results
           path: |
-            ${{ steps.inspector.outputs.artifact_sbom }}
-            ${{ steps.inspector.outputs.inspector_scan_results }}
-            ${{ steps.inspector.outputs.inspector_scan_results_csv }}
-            ${{ steps.inspector.outputs.inspector_scan_results_markdown }}
-            
+            inspector_scan_*.json
+            inspector_scan_*.csv
+            inspector_scan_*.md
+            inspector_dockerfile_scan_*.csv
+            inspector_dockerfile_scan_*.md
+            inspector_malware_scan_*.md
+          if-no-files-found: ignore
