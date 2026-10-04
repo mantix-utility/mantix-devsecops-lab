@@ -10,6 +10,6 @@
     "critical_threshold": "1",
     "high_threshold": "0",
     "medium_threshold": "0",
-    "low_threshold": "0"
+    "low_threshold": "1"
   }
 }
