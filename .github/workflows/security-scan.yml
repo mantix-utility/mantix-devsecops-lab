@@ -49,22 +49,28 @@ jobs:
           # Todavía NO bloquearemos el pipeline.
           critical_threshold: 1
           high_threshold: 1
-          medium_threshold: 1
-          low_threshold: 1
-          other_threshold: 1
+          medium_threshold: 0
+          low_threshold: 0
+          other_threshold: 0
 
       # 5. Mostrar si alguno de los thresholds fue alcanzado
-      - name: Show security gate result
+      - name: Enforce security gate
         run: |
           echo "======================================"
           echo " Amazon Inspector Security Gate"
           echo "======================================"
-          echo "Threshold exceeded:"
-          echo "${{ steps.inspector.outputs.vulnerability_threshold_exceeded }}"
-          echo "======================================"
+
+          if [ "${{ steps.inspector.outputs.vulnerability_threshold_exceeded }}" = "1" ]; then
+            echo "SECURITY GATE FAILED"
+            echo "Critical or High vulnerabilities exceeded the allowed threshold."
+            exit 1
+          fi
+
+          echo "SECURITY GATE PASSED"
 
       # 6. Guardar SBOM y resultados del análisis
       - name: Upload Inspector scan results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: amazon-inspector-results
@@ -73,3 +79,4 @@ jobs:
             ${{ steps.inspector.outputs.inspector_scan_results }}
             ${{ steps.inspector.outputs.inspector_scan_results_csv }}
             ${{ steps.inspector.outputs.inspector_scan_results_markdown }}
+            
