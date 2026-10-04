@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "app": {
+    "name": "mantix-devsecops-lab",
+    "build_environment": "staging",
+    "composer_audit": "warning"
+  },
+  "aws_region": "us-east-1",
+  "inspector": {
+    "critical_threshold": "1",
+    "high_threshold": "0",
+    "medium_threshold": "0",
+    "low_threshold": "0"
+  }
+}
