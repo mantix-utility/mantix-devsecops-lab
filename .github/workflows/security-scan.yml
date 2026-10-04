@@ -24,14 +24,41 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Show GitHub context
+      - name: Inspect GitHub OIDC claims
+        shell: bash
         run: |
-          echo "repository=${{ github.repository }}"
-          echo "repository_id=${{ github.repository_id }}"
-          echo "repository_owner=${{ github.repository_owner }}"
-          echo "repository_owner_id=${{ github.repository_owner_id }}"
-          echo "ref=${{ github.ref }}"
-          echo "event_name=${{ github.event_name }}"
+          RESPONSE=$(curl -sS \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")
+
+          TOKEN=$(echo "$RESPONSE" | jq -r '.value')
+
+          if [ "$TOKEN" = "null" ] || [ -z "$TOKEN" ]; then
+            echo "Could not obtain GitHub OIDC token"
+            exit 1
+          fi
+
+          PAYLOAD=$(echo "$TOKEN" | cut -d '.' -f2)
+
+          # JWT uses base64url and may omit padding.
+          PAYLOAD=$(echo "$PAYLOAD" | tr '_-' '/+')
+          case $((${#PAYLOAD} % 4)) in
+            2) PAYLOAD="${PAYLOAD}==" ;;
+            3) PAYLOAD="${PAYLOAD}=" ;;
+          esac
+
+          echo "=== GitHub OIDC claims relevant to AWS ==="
+          echo "$PAYLOAD" | base64 -d | jq '{
+            sub,
+            aud,
+            repository,
+            repository_id,
+            repository_owner,
+            repository_owner_id,
+            ref,
+            ref_type,
+            event_name
+          }'
 
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
