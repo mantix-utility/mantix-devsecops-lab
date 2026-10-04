@@ -11,6 +11,7 @@ def get_user():
     connection = sqlite3.connect("users.db")
     cursor = connection.cursor()
 
+    # Secure query using parameterized SQL
     cursor.execute(
         "SELECT * FROM users WHERE id = ?",
         (user_id,)
