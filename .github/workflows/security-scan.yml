@@ -50,7 +50,7 @@ jobs:
           critical_threshold: 1
           high_threshold: 1
           medium_threshold: 0
-          low_threshold: 0
+          low_threshold: 1
           other_threshold: 0
 
       # 5. Mostrar si alguno de los thresholds fue alcanzado
