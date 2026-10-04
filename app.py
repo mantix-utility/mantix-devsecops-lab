@@ -11,8 +11,10 @@ def get_user():
     cursor = connection.cursor()
 
     # Intentionally vulnerable for SAST lab
-    query = "SELECT * FROM users WHERE id = " + user_id
-    cursor.execute(query)
+cursor.execute(
+    "SELECT * FROM users WHERE id = ?",
+    (user_id,)
+)
 
     user = cursor.fetchone()
     connection.close()
