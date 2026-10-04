@@ -7,8 +7,8 @@ app = Flask(__name__)
 def get_user():
     user_id = request.args.get("id")
 
-    connection = sqlite3.connect("users.db")
-    cursor = connection.cursor()
+query = "SELECT * FROM users WHERE id = " + user_id
+cursor.execute(query)
 
     # Intentionally vulnerable for SAST lab
     query = "SELECT * FROM users WHERE id = " + user_id
